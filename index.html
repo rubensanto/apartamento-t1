@@ -500,13 +500,14 @@ function buildStandDesk(g, it) {
 function buildBed(g, it) {
   const { w, d, h } = it, c = it.color, dk = shade(c, .8);
   bx(g, w, 0.3, d - 0.09, c, 0, 0, 0.045);
-  bx(g, w - 0.06, 0.2, d - 0.15, '#F3F3F1', 0, 0.3, 0.06);
+  const linen = it.linen || '#4A3226'; // dark brown sheets and pillows
+  bx(g, w - 0.06, 0.2, d - 0.15, linen, 0, 0.3, 0.06, { roughness: 0.95 });
   bx(g, w + 0.04, h, 0.09, c, 0, 0, -d / 2 + 0.045);
   const n = Math.max(2, Math.round((w + 0.04) / 0.36));
   for (let i = 1; i < n; i++) bx(g, 0.01, h - 0.52, 0.012, dk, -(w + 0.04) / 2 + i * (w + 0.04) / n, 0.52, -d / 2 + 0.091);
   for (let k = 1; k < 3; k++) bx(g, w + 0.04, 0.01, 0.012, dk, 0, 0.52 + k * (h - 0.52) / 3, -d / 2 + 0.091);
   const np = w > 1.2 ? 2 : 1, pw = w / np - 0.14;
-  for (let i = 0; i < np; i++) bx(g, pw, 0.12, 0.36, '#FFFFFF', np === 1 ? 0 : (i ? 1 : -1) * w / 4, 0.5, -d / 2 + 0.32);
+  for (let i = 0; i < np; i++) bx(g, pw, 0.12, 0.36, shade(linen, 1.12), np === 1 ? 0 : (i ? 1 : -1) * w / 4, 0.5, -d / 2 + 0.32);
 }
 function buildDrawers(g, it) {
   const { w, d, h } = it, c = it.color; bx(g, w, h, d, c);
