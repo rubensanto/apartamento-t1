@@ -65,7 +65,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .chip.good:not(:disabled){color:var(--good);background:var(--good-soft);border-color:transparent}
 main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px;min-height:0}
 #stage{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--stage);min-height:0}
-#c{display:block;width:100%;height:100%;touch-action:none}
+#c{display:block;width:100%;height:100%;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .lbl{position:absolute;transform:translate(-50%,-50%);font:500 11px var(--f-num);white-space:nowrap;padding:2px 6px;border-radius:4px;background:var(--surface);color:var(--ink);border:1px solid var(--line)}
 .lbl.room{background:transparent;border:0;color:var(--on-floor);text-align:center;line-height:1.15;padding:0}
@@ -895,9 +895,34 @@ const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new T
 function setRay(e) { const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam); }
 function floorPt() { return ray.ray.intersectPlane(floorPlane, tmpV) ? tmpV.clone() : null; }
 function pickItem() { for (const h of ray.intersectObjects(itemRoot.children, true)) { const id = h.object.userData.itemId; if (id) return items.find(i => i.id === id); } return null; }
+/* Touch: a finger on the canvas always moves the camera. A tap selects a piece; to drag it, the piece
+   must already be selected and the finger has to rest on it for a moment (long press) before moving. */
+const HOLD_MS = 380, TAP_PX = 8, touches = new Set();
+let hold = null;
+let coarse = false; try { coarse = matchMedia('(pointer: coarse)').matches; } catch (e) {}
+const isTouch = e => e.pointerType === 'touch' || e.pointerType === 'pen';
+function cancelHold() { if (hold) { clearTimeout(hold.t); hold = null; } }
+function startHold(e, it) {
+  cancelHold();
+  const h = { it, x: e.clientX, y: e.clientY, id: e.pointerId };
+  h.t = setTimeout(() => {
+    if (hold !== h || touches.size !== 1 || it.locked || selId !== it.id) return;
+    hold = null;
+    setRay({ clientX: h.x, clientY: h.y }); const p = floorPt(); if (!p) return;
+    drag = { it, ox: it.x - p.x, oz: it.z - p.z, moved: false, pid: h.id }; ctl.enabled = false;
+    try { canvas.setPointerCapture(h.id); } catch (err) {}
+    try { navigator.vibrate && navigator.vibrate(15); } catch (err) {}
+    flash(`A mover ${it.name}. Larga o dedo para pousar.`);
+  }, HOLD_MS);
+  hold = h;
+}
 canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  setRay(e); downAt = { x: e.clientX, y: e.clientY };
+  if (isTouch(e)) {
+    touches.add(e.pointerId);
+    if (touches.size > 1) { cancelHold(); downAt = null; return; }
+  }
+  setRay(e); downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
   if (measureOn) {
     ctl.enabled = false; const p = floorPt(); if (!p) return;
     const q = [Math.round(p.x * 100) / 100, Math.round(p.z * 100) / 100];
@@ -905,13 +930,16 @@ canvas.addEventListener('pointerdown', e => {
     refreshOverlay(); requestRender(); return;
   }
   const it = pickItem();
+  if (isTouch(e)) { if (it && selId === it.id && !it.locked) startHold(e, it); return; }
   if (it) {
     if (selId !== it.id) select(it.id);
     if (!it.locked) { const p = floorPt(); if (p) { drag = { it, ox: it.x - p.x, oz: it.z - p.z, moved: false }; ctl.enabled = false; canvas.setPointerCapture(e.pointerId); } }
   }
 });
 canvas.addEventListener('pointermove', e => {
+  if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > TAP_PX) cancelHold();
   if (drag) {
+    if (drag.pid !== undefined && e.pointerId !== drag.pid) return;
     setRay(e); const p = floorPt(); if (!p) return;
     const st = snapOn ? 0.05 : 0.01, it = drag.it;
     it.x = Math.round((p.x + drag.ox) / st) * st; it.z = Math.round((p.z + drag.oz) / st) * st;
@@ -926,16 +954,26 @@ canvas.addEventListener('pointermove', e => {
     canvas.style.cursor = measureOn ? 'crosshair' : it ? (it.locked ? 'pointer' : 'grab') : '';
   });
 });
-window.addEventListener('pointerup', e => {
+function endPointer(e) {
+  const touch = isTouch(e);
+  if (touch) { touches.delete(e.pointerId); cancelHold(); }
   if (drag) {
+    if (drag.pid !== undefined && e.pointerId !== drag.pid) return; // only the dragging finger drops the piece
     const moved = drag.moved; if (moved) commit(); drag = null; ctl.enabled = true;
+    if (touch) { flashT = 0; setHint(); }
     // a remote change that arrived mid-drag: merge it now (our dragged piece keeps our position)
     if (pendingRemote) { const p = pendingRemote; pendingRemote = null; applyRemote(p); }
   }
-  else if (downAt && !measureOn && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5 && e.target === canvas) { setRay(e); if (!pickItem()) select(null); }
+  else if (e.type === 'pointerup' && downAt && !measureOn && e.target === canvas) {
+    const d = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
+    if (touch) { if (d < TAP_PX && Date.now() - downAt.t < 600) { setRay(e); const it = pickItem(); select(it ? it.id : null); if (it && !it.locked) flash('Selecionado. Mantém o dedo sobre a peça para a arrastar.'); } }
+    else if (d < 5) { setRay(e); if (!pickItem()) select(null); }
+  }
   if (measureOn) ctl.enabled = true;
   downAt = null;
-});
+}
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', endPointer);
 
 const ctl3 = new THREE.OrbitControls(persp, canvas);
 ctl3.target.copy(CEN); ctl3.maxPolarAngle = 1.45; ctl3.minDistance = 2; ctl3.maxDistance = 32;
@@ -1244,7 +1282,7 @@ function renderPeca() {
   if (!it) {
     const bad = items.filter(i => i._iss && i._iss.length);
     pbody.innerHTML = `<div class="empty">
-      <p><b>Clica num móvel</b> para o selecionar. Arrasta-o para o mover; o painel mostra se cabe e quanto espaço livre fica à volta.</p>
+      <p>${coarse ? '<b>Toca num móvel</b> para o selecionar. Para o mover, mantém o dedo sobre ele meio segundo e arrasta; sem isso, o dedo só mexe a vista.' : '<b>Clica num móvel</b> para o selecionar. Arrasta-o para o mover.'} O painel mostra se cabe e quanto espaço livre fica à volta.</p>
       <p class="note"><kbd>R</kbd> roda 90° · <kbd>Q</kbd>/<kbd>E</kbd> rodam 15° · setas empurram 1 cm (com <kbd>Shift</kbd>, 10 cm) · <kbd>Del</kbd> apaga · <kbd>Ctrl</kbd>+<kbd>Z</kbd> desfaz</p>
       <p class="note">As peças da cozinha, casa de banho, roupeiro embutido e ar condicionado estão fixas. Podes destrancá-las no painel se quiseres simular obras.</p>
       </div>
@@ -1360,6 +1398,8 @@ let flashT = 0;
 function setHint() {
   if (Date.now() < flashT) return;
   hintEl.textContent = measureOn ? 'Clica em dois pontos do chão para medir. Esc ou “Medir” para sair.'
+    : coarse ? (view === 'plan' ? 'Um dedo desloca, dois fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.'
+      : 'Um dedo roda, dois deslocam e fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.')
     : view === 'plan' ? 'Arrasta um móvel para o mover. Arrasta o fundo para deslocar a planta; roda ou pinça para zoom.'
     : 'Arrasta um móvel para o mover. Arrasta o fundo para rodar; botão direito ou dois dedos para deslocar.';
 }
