@@ -413,18 +413,20 @@ function buildSofa(g, it) {
   for (let i = 0; i < n; i++) bx(g, cw, 0.12, d - back - 0.02, lite, -inner / 2 + cw / 2 + i * (cw + 0.012), seat - 0.12, back / 2 + 0.01);
 }
 function buildSofaL(g, it) {
-  const { w, d, h, cw, cd } = it, side = it.side || 1, c = it.color, seat = it.seat || 0.42, arm = 0.17, carm = 0.14, back = 0.22, lite = shade(c, 1.06);
+  const { w, d, h, cw, cd } = it, side = it.side || 1, c = it.color, seat = it.seat || 0.42, arm = 0.17, carm = 0.17, back = 0.22, lite = shade(c, 1.06);
   const z0 = -cd / 2, zc = z0 + d / 2, cx = side * (w / 2 - cw / 2);
   bx(g, w, seat - 0.12, d, c, 0, 0, zc);
   bx(g, cw, seat - 0.12, cd - d, c, cx, 0, z0 + d + (cd - d) / 2);
   bx(g, w, h, back, shade(c, .95), 0, 0, z0 + back / 2);
+  // both armrests are the depth of the regular seat; the chaise end is open beyond them
   bx(g, arm, seat + 0.16, d, c, -side * (w / 2 - arm / 2), 0, zc);
-  bx(g, carm, seat + 0.1, cd, c, side * (w / 2 - carm / 2), 0, 0);
+  bx(g, carm, seat + 0.16, d, c, side * (w / 2 - carm / 2), 0, zc);
   const xa = side > 0 ? -w / 2 + arm : w / 2 - arm, xb = side > 0 ? w / 2 - cw : -w / 2 + cw;
   const span = Math.abs(xb - xa), n = span > 1.3 ? 2 : 1, pw = (span - (n - 1) * 0.012) / n, xs = Math.min(xa, xb);
   for (let i = 0; i < n; i++) bx(g, pw, 0.12, d - back - 0.02, lite, xs + pw / 2 + i * (pw + 0.012), seat - 0.12, z0 + back + (d - back) / 2);
   const ccx = side > 0 ? (w / 2 - cw + w / 2 - carm) / 2 : (-w / 2 + carm - w / 2 + cw) / 2;
-  bx(g, cw - carm - 0.012, 0.12, cd - back - 0.02, lite, ccx, seat - 0.12, z0 + back + (cd - back) / 2);
+  bx(g, cw - carm - 0.012, 0.12, d - back - 0.01, lite, ccx, seat - 0.12, z0 + back + (d - back) / 2);
+  bx(g, cw - 0.012, 0.12, cd - d - 0.02, lite, side * (w / 2 - cw / 2), seat - 0.12, z0 + d + (cd - d) / 2);
 }
 function buildTableRound(g, it) {
   const r = it.w / 2, h = it.h, c = it.color, e = it.ext ? (it.extra || 0.4) : 0;
@@ -635,7 +637,13 @@ function buildRug(g, it) {
 }
 function buildKitchen(g, it) {
   const { w, d, h } = it, c = it.color, tw = 0.6, run = w - tw, xb = -w / 2 + run / 2, xt = w / 2 - tw / 2;
-  bx(g, tw, h, d, '#ECE8E1', xt); bx(g, tw - 0.01, 0.006, 0.004, '#A39E96', xt, 1.55, d / 2 + 0.002); bx(g, 0.03, 0.3, 0.008, '#A39E96', xt - tw / 2 + 0.05, 1.05, d / 2 + 0.004);
+  // fridge column, three doors: freezer up to worktop height, fridge above it, small cupboard (~50 cm) on top
+  const seamC = '#A39E96', fz = 0.89, topD = 0.5, fx = xt - tw / 2 + 0.05;
+  bx(g, tw, h, d, '#ECE8E1', xt);
+  for (const y of [fz, h - topD]) bx(g, tw - 0.01, 0.006, 0.004, seamC, xt, y, d / 2 + 0.002);
+  bx(g, 0.03, 0.22, 0.008, seamC, fx, fz - 0.3, d / 2 + 0.004);
+  bx(g, 0.03, 0.3, 0.008, seamC, fx, fz + 0.08, d / 2 + 0.004);
+  bx(g, 0.18, 0.02, 0.008, seamC, xt, h - topD + 0.04, d / 2 + 0.004);
   bx(g, run, 0.1, d - 0.06, '#77716A', xb, 0, -0.03);
   bx(g, run, 0.76, d - 0.02, c, xb, 0.1, -0.01);
   bx(g, run, 0.03, d + 0.02, '#F4F3F0', xb, 0.86, 0.01);
@@ -650,7 +658,7 @@ function buildKitchen(g, it) {
   bx(g, run, 0.6, 0.012, '#4A4946', xb, 0.89, -d / 2 + 0.006);
   bx(g, run, h - 1.5, 0.35, c, xb, 1.5, -d / 2 + 0.175);
   for (let i = 1; i < nd; i++) bx(g, 0.004, h - 1.54, 0.004, shade(c, .7), -w / 2 + i * run / nd, 1.52, -d / 2 + 0.352);
-  bx(g, 0.56, 0.36, 0.01, '#151515', ck, 1.6, -d / 2 + 0.355, { roughness: 0.3 });
+  bx(g, 0.56, 0.36, 0.01, '#151515', xb, 1.6, -d / 2 + 0.355, { roughness: 0.3 }); // microwave behind the middle upper door
 }
 function buildAC(g, it) { const { w, d, h } = it; bx(g, w, h, d, it.color); bx(g, w - 0.08, 0.012, 0.004, '#9a9a9a', 0, 0.05, d / 2 + 0.002); }
 function buildVanity(g, it) {
@@ -920,8 +928,8 @@ canvas.addEventListener('pointermove', e => {
 window.addEventListener('pointerup', e => {
   if (drag) {
     const moved = drag.moved; if (moved) commit(); drag = null; ctl.enabled = true;
-    // a remote change that arrived mid-drag: our own drop wins if we moved something, otherwise take it now
-    if (pendingRemote) { const p = pendingRemote; pendingRemote = null; if (!moved) applyRemote(p); }
+    // a remote change that arrived mid-drag: merge it now (our dragged piece keeps our position)
+    if (pendingRemote) { const p = pendingRemote; pendingRemote = null; applyRemote(p); }
   }
   else if (downAt && !measureOn && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5 && e.target === canvas) { setRay(e); if (!pickItem()) select(null); }
   if (measureOn) ctl.enabled = true;
@@ -1051,6 +1059,34 @@ let hist = [], fut = [], last = JSON.stringify(items.map(strip));
 function commit() { const s = JSON.stringify(items.map(strip)); if (s === last) return; hist.push(last); if (hist.length > 150) hist.shift(); last = s; fut = []; save(); updUndo(); scheduleShared(); }
 function restore(s) { items = JSON.parse(s); rebuildAll(); if (!sel()) selId = null; save(); changed(); renderPanel(); updUndo(); scheduleShared(); }
 
+/* Per-item three-way merge for the shared layout. `base` is the shared layout our local state started from;
+   for each piece, whoever changed it relative to base wins (ours if we did), so two people moving different
+   pieces at the same moment both keep their change. Same piece: our unsaved change wins locally, and the
+   next save decides (last save wins). */
+let baseJSON = null;
+const sig = i => i ? JSON.stringify(i, Object.keys(i).sort()) : '';
+function mergeLayouts(base, local, remote) {
+  const B = new Map(base.map(i => [i.id, i])), L = new Map(local.map(i => [i.id, i])), out = [], seen = new Set();
+  const pick = (id, r) => (sig(L.get(id)) !== sig(B.get(id)) ? L.get(id) : r);
+  for (const r of remote) { seen.add(r.id); const v = pick(r.id, r); if (v) out.push(v); }
+  for (const l of local) if (!seen.has(l.id)) { const v = pick(l.id, undefined); if (v) out.push(v); }
+  return out;
+}
+function setLocal(arr) {
+  const json = JSON.stringify(arr);
+  if (json === JSON.stringify(items.map(strip))) return;
+  items = JSON.parse(json); last = json; fut = [];
+  rebuildAll(); if (!sel()) selId = null; save(); changed(); renderPanel(); updUndo();
+}
+// fold a newer shared layout into what this browser shows; returns true when we still hold unsaved changes
+function foldRemote(remote) {
+  const rJSON = JSON.stringify(remote), local = items.map(strip);
+  const next = baseJSON ? mergeLayouts(JSON.parse(baseJSON), local, remote) : remote;
+  baseJSON = rJSON; remoteJSON = rJSON;
+  setLocal(next);
+  return JSON.stringify(next) !== rJSON;
+}
+
 /* ============================== SHARED LAYOUT (db) ==============================
    One document, layout/main = { v, items, by (viewer id), at }. Everyone with the link sees it live;
    Contributors and up write it. Writes happen only after a viewer's own change (drop, edit, undo, reset). */
@@ -1093,20 +1129,31 @@ function scheduleShared() {
   if (!sb || sharedState === 'connecting' || sharedState === 'local') return;
   clearTimeout(writeT); writeT = setTimeout(writeShared, 400);
 }
-function writeShared(retry) {
+let remoteRev = null;
+function writeShared() {
   if (!sb) return;
   writeChain = writeChain.then(async () => {
-    const json = JSON.stringify(items.map(strip));
-    if (json === remoteJSON) return;
-    const row = { id: ROOM, items: JSON.parse(json), v: LAYOUT_V, by: (myDevice + '|' + myName()).slice(0, 60), updated_at: new Date().toISOString() };
-    const { error } = await sb.from('layouts').upsert(row);
-    if (error) {
-      if (!retry) setTimeout(() => writeShared(true), 1000 + Math.random() * 1000);
-      else { sharedState = remoteJSON ? 'offline' : sharedState; renderSync(); flash('Não foi possível guardar a disposição partilhada. A alteração ficou neste browser.'); }
-      return;
+    // optimistic concurrency: save only if nobody saved since the revision we hold; otherwise fetch,
+    // merge piece by piece (foldRemote keeps our changed pieces) and try again
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (drag) { scheduleShared(); return; }
+      const json = JSON.stringify(items.map(strip));
+      if (json === remoteJSON) return;
+      const row = { items: JSON.parse(json), v: LAYOUT_V, by: (myDevice + '|' + myName()).slice(0, 60), updated_at: new Date().toISOString() };
+      const res = remoteRev === null
+        ? await sb.from('layouts').insert(Object.assign({ id: ROOM, rev: 1 }, row)).select('rev')
+        : await sb.from('layouts').update(Object.assign({ rev: remoteRev + 1 }, row)).eq('id', ROOM).eq('rev', remoteRev).select('rev');
+      if (!res.error && res.data && res.data.length) {
+        remoteRev = res.data[0].rev; remoteJSON = json; baseJSON = json; remoteMeta = { by: row.by, at: row.updated_at };
+        sharedState = 'live'; renderSync(); return;
+      }
+      if (res.error && res.error.code !== '23505') {
+        if (attempt < 1) { await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000)); continue; }
+        sharedState = remoteJSON ? 'offline' : sharedState; renderSync();
+        flash('Não foi possível guardar a disposição partilhada. A alteração ficou neste browser.'); return;
+      }
+      await fetchShared(true);
     }
-    remoteJSON = json; remoteMeta = { by: row.by, at: row.updated_at };
-    sharedState = 'live'; renderSync();
   });
 }
 const num = v => typeof v === 'number' && isFinite(v);
@@ -1114,20 +1161,20 @@ function cleanItems(arr) {
   return arr.filter(i => i && typeof i === 'object' && TYPES[i.type] && typeof i.id === 'string' && ['x', 'z', 'rot', 'w', 'd', 'h'].every(k => num(i[k])))
     .map(i => Object.assign({}, i, { name: String(i.name || TYPES[i.type].label).slice(0, 80), locked: !!i.locked }));
 }
-function applyRemote(d) {
+function applyRemote(d, quiet) {
   if (!d || !Array.isArray(d.items)) return;
-  const arr = cleanItems(d.items), json = JSON.stringify(arr);
-  remoteJSON = json; remoteMeta = { by: typeof d.by === 'string' ? d.by : '', at: typeof d.at === 'string' ? d.at : '' };
-  if (json === JSON.stringify(items.map(strip))) { renderSync(); return; }
+  if (num(d.rev) && remoteRev !== null && d.rev < remoteRev) return; // stale delivery
   if (drag) { pendingRemote = d; return; }
-  items = JSON.parse(json); last = json; fut = [];
-  rebuildAll(); if (!sel()) selId = null; save(); changed(); renderPanel(); updUndo(); renderSync();
+  if (num(d.rev)) remoteRev = d.rev;
+  remoteMeta = { by: typeof d.by === 'string' ? d.by : '', at: typeof d.at === 'string' ? d.at : '' };
+  if (foldRemote(cleanItems(d.items)) && !quiet) scheduleShared();
+  renderSync();
 }
-async function fetchShared() {
-  const { data, error } = await sb.from('layouts').select('items,by,updated_at').eq('id', ROOM).maybeSingle();
+async function fetchShared(quiet) {
+  const { data, error } = await sb.from('layouts').select('items,by,updated_at,rev').eq('id', ROOM).maybeSingle();
   if (error) { if (sharedState === 'connecting') { sharedState = 'offline'; renderSync(); } return; }
-  if (!data) { sharedState = 'empty'; renderSync(); return; }
-  sharedState = 'live'; applyRemote({ items: data.items, by: data.by, at: data.updated_at }); renderSync();
+  if (!data) { remoteRev = null; if (sharedState !== 'live') { sharedState = 'empty'; renderSync(); } return; }
+  sharedState = 'live'; applyRemote({ items: data.items, by: data.by, at: data.updated_at, rev: data.rev }, quiet); renderSync();
 }
 async function connectShared() {
   if (!window.supabase || typeof window.supabase.createClient !== 'function') { sharedState = 'local'; renderSync(); return; }
@@ -1136,7 +1183,7 @@ async function connectShared() {
   await fetchShared(); clearTimeout(timer);
   sb.channel('layout-' + ROOM)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'layouts', filter: 'id=eq.' + ROOM }, p => {
-      const r = p.new; if (r && Array.isArray(r.items)) { sharedState = 'live'; applyRemote({ items: r.items, by: r.by, at: r.updated_at }); }
+      const r = p.new; if (r && Array.isArray(r.items)) { sharedState = 'live'; applyRemote({ items: r.items, by: r.by, at: r.updated_at, rev: r.rev }); }
     })
     .subscribe();
   // phones pause background tabs: catch up when the page comes back
