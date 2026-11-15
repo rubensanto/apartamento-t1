@@ -1167,12 +1167,13 @@ function walkTap(e) {
   setRay(e); const hit = pickAny(3.2);
   if (hit.far) { flash('Está longe: aproxima-te para usar.'); return; }
   if (hit.door !== undefined) { toggleDoor(hit.door); return; }
-  const it = hit.it; if (!it) { hideWMenu(); return; }
+  const it = hit.it; if (!it) { hideWMenu(); select(null); return; }
   const pt = hit.h.point.clone();
-  if (it.type === 'chair' || it.type === 'officeChair') { takePose(it, pt, 'sit'); return; }
-  if (!SEATS.has(it.type) && !BEDS.has(it.type)) { flash(it.name); return; }
+  select(it.id);
+  if (!SEATS.has(it.type) && !BEDS.has(it.type)) { hideWMenu(); flash(it.locked ? `${it.name} (fixo).` : `${it.name}: ${coarse ? 'mantém o dedo e arrasta' : 'arrasta'} para mover; ${coarse ? 'roda no painel' : 'R/Q/E rodam, Del apaga'}.`); return; }
   const m = $('#wmenu'); m.querySelector('b').textContent = it.name;
-  const box = m.querySelector('div'); box.innerHTML = '<button class="btn primary" data-a="sit">Sentar</button><button class="btn primary" data-a="lie">Deitar</button><button class="btn" data-a="x">Cancelar</button>';
+  const lie = !/chair/i.test(it.type);
+  const box = m.querySelector('div'); box.innerHTML = '<button class="btn primary" data-a="sit">Sentar</button>' + (lie ? '<button class="btn primary" data-a="lie">Deitar</button>' : '') + '<button class="btn" data-a="x">Fechar</button>';
   box.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.a === 'x') hideWMenu(); else takePose(it, pt, b.dataset.a); });
   m.hidden = false;
 }
@@ -1197,20 +1198,48 @@ function walkTick(t) {
 }
 function kickWalk() { if (!W.raf) { W.t = 0; W.raf = requestAnimationFrame(walkTick); } }
 const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
+function walkStartDrag(L, it) {
+  setRay({ clientX: L.x, clientY: L.y }); const p = floorPt(); if (!p) return;
+  L.drag = { it, ox: it.x - p.x, oz: it.z - p.z, moved: false }; hideWMenu();
+  if (selId !== it.id) select(it.id);
+  canvas.style.cursor = 'grabbing';
+}
 canvas.addEventListener('pointerdown', e => {
   if (view !== 'walk' || W.look) return;
-  W.look = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: Date.now() }; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  const L = W.look = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: Date.now(), cand: null, drag: null };
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (W.pose || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  setRay(e); const hit = pickAny(4.5);
+  if (!hit.it || hit.it.locked) return;
+  if (isTouch(e)) {
+    if (selId !== hit.it.id) return;
+    L.hold = setTimeout(() => { if (W.look === L && Math.hypot(L.x - L.x0, L.y - L.y0) < 8) { walkStartDrag(L, hit.it); try { navigator.vibrate && navigator.vibrate(15); } catch (err) {} flash(`A mover ${hit.it.name}. Larga para pousar.`); } }, 380);
+  } else L.cand = hit.it;
 });
 canvas.addEventListener('pointermove', e => {
   if (view !== 'walk' || !W.look || e.pointerId !== W.look.id) return;
+  const L = W.look;
+  if (!L.drag && L.cand && Math.hypot(e.clientX - L.x0, e.clientY - L.y0) > 5) walkStartDrag(L, L.cand);
+  if (L.drag) {
+    setRay(e); const p = floorPt(); if (!p) return;
+    const it = L.drag.it, st = snapOn ? 0.05 : 0.01;
+    it.x = Math.round((p.x + L.drag.ox) / st) * st; it.z = Math.round((p.z + L.drag.oz) / st) * st;
+    if (snapOn) { const c = clearances(it); const M2 = 0.06;
+      if (c.nx && c.nx.g > 0 && c.nx.g < M2) it.x -= c.nx.g; else if (c.px && c.px.g > 0 && c.px.g < M2) it.x += c.px.g;
+      if (c.nz && c.nz.g > 0 && c.nz.g < M2) it.z -= c.nz.g; else if (c.pz && c.pz.g > 0 && c.pz.g < M2) it.z += c.pz.g; }
+    L.drag.moved = true; L.x = e.clientX; L.y = e.clientY; syncObj(it); changed(true); return;
+  }
+  if (L.cand) return; // pressed on a piece: wait to see if it becomes a drag
+  if (L.hold && Math.hypot(e.clientX - L.x0, e.clientY - L.y0) > 8) { clearTimeout(L.hold); L.hold = 0; }
   const sens = e.pointerType === 'mouse' ? 0.0042 : 0.0065;
   W.yaw -= (e.clientX - W.look.x) * sens; W.pitch = Math.max(-1.25, Math.min(1.25, W.pitch - (e.clientY - W.look.y) * sens));
   W.look.x = e.clientX; W.look.y = e.clientY; placeWalkCam(); requestRender();
 });
 for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => {
   if (!W.look || e.pointerId !== W.look.id) return;
-  const L = W.look; W.look = null;
-  if (ev === 'pointerup' && view === 'walk' && Math.hypot(e.clientX - L.x0, e.clientY - L.y0) < 8 && Date.now() - L.t0 < 450) walkTap(e);
+  const L = W.look; W.look = null; if (L.hold) clearTimeout(L.hold);
+  if (L.drag) { canvas.style.cursor = ''; if (L.drag.moved) commit(); if (pendingRemote) { const p = pendingRemote; pendingRemote = null; applyRemote(p); } return; }
+  if (ev === 'pointerup' && view === 'walk' && Math.hypot(e.clientX - L.x0, e.clientY - L.y0) < 8 && Date.now() - L.t0 < (L.cand ? 700 : 450)) walkTap(e);
 });
 (() => {
   const joy = $('#joy'), knob = joy.querySelector('i'), R = 46; let id = null;
@@ -1430,7 +1459,7 @@ function cleanItems(arr) {
 function applyRemote(d, quiet) {
   if (!d || !Array.isArray(d.items)) return;
   if (num(d.rev) && remoteRev !== null && d.rev < remoteRev) return; // stale delivery
-  if (drag) { pendingRemote = d; return; }
+  if (drag || (W.look && W.look.drag)) { pendingRemote = d; return; }
   if (num(d.rev)) remoteRev = d.rev;
   remoteMeta = { by: typeof d.by === 'string' ? d.by : '', at: typeof d.at === 'string' ? d.at : '' };
   if (foldRemote(cleanItems(d.items)) && !quiet) scheduleShared();
@@ -1654,8 +1683,8 @@ const hintEl = $('#hint');
 let flashT = 0;
 function setHint() {
   if (Date.now() < flashT) return;
-  hintEl.textContent = view === 'walk' ? (coarse ? 'Joystick para andar, arrasta para olhar. Toca numa porta para a abrir; no sofá, cama ou cadeira para te sentares ou deitares.'
-      : 'W A S D ou setas para andar (Shift corre), arrasta para olhar. Clica numa porta para a abrir; no sofá, cama ou cadeira para te sentares ou deitares.')
+  hintEl.textContent = view === 'walk' ? (coarse ? 'Joystick para andar, arrasta para olhar. Toca num móvel para o escolher e mantém o dedo nele para o mover; toca numa porta para a abrir.'
+      : 'W A S D ou setas para andar (Shift corre), arrasta o fundo para olhar. Arrasta um móvel para o mudar de sítio; clica numa porta para a abrir, no sofá ou cama para te sentares ou deitares.')
     : measureOn ? 'Clica em dois pontos do chão para medir. Esc ou “Medir” para sair.'
     : coarse ? (view === 'plan' ? 'Um dedo desloca, dois fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.'
       : 'Um dedo roda, dois deslocam e fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.')
@@ -1689,9 +1718,8 @@ window.addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input,textarea,select')) return;
   const k = e.key, mod = e.ctrlKey || e.metaKey;
   if (view === 'walk' && !mod) {
-    if (k === 'Escape') { setView('3d'); return; }
-    const kk = k.toLowerCase(); if (WALK_KEYS.has(kk)) { e.preventDefault(); W.keys.add(kk); kickWalk(); }
-    return;
+    if (k === 'Escape') { if (sel()) { select(null); hideWMenu(); } else setView('3d'); return; }
+    const kk = k.toLowerCase(); if (WALK_KEYS.has(kk)) { e.preventDefault(); W.keys.add(kk); kickWalk(); return; }
   }
   if (mod && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && k.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
