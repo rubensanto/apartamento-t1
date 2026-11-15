@@ -136,6 +136,9 @@ kbd{font:500 11px var(--f-num);border:1px solid var(--line);border-bottom-width:
 #stage.walking.touch #joy{display:block}
 #stage.walking #labels{display:none}
 #stage.walking #c{cursor:grab}
+#wmenu{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);min-width:200px;max-width:calc(100% - 32px)}
+#wmenu b{font:600 14px var(--f-ui);font-stretch:85%}
+#wmenu div{display:flex;gap:8px;flex-wrap:wrap}
 #loaderr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--muted)}
 
 @media (max-width:860px){
@@ -181,7 +184,8 @@ kbd{font:500 11px var(--f-num);border:1px solid var(--line);border-bottom-width:
       <canvas id="c" aria-label="Modelo 3D do apartamento"></canvas>
       <div id="labels"></div>
       <div id="joy" aria-label="Joystick para andar"><i></i></div>
-      <div class="hint"><p id="hint"></p><button class="btn sm" id="b-recenter">Recentrar</button></div>
+      <div class="hint"><p id="hint"></p><span style="display:flex;gap:6px"><button class="btn sm primary" id="b-stand" hidden>Levantar</button><button class="btn sm" id="b-recenter">Recentrar</button></span></div>
+      <div id="wmenu" hidden><b></b><div></div></div>
     </div>
     <aside id="panel">
       <div class="tabs" role="tablist">
@@ -238,10 +242,10 @@ const WALLS = [
   { r:[3.15,2.85,3.25,3.60] }, // wall between the utility closet and the bedroom entrance (behind the open bedroom door)
 ];
 const DOORS = [
-  { name:'Porta de entrada',       hinge:[0,3.52],    closed:[0,-1], swing:[1,0],  w:0.9, color:'#1E1F21', wall:1 },
-  { name:'Porta da casa de banho', hinge:[0.95,3.75], closed:[1,0],  swing:[0,1],  w:0.8, color:'#C9A47C', wall:5 },
-  { name:'Porta do quarto',        hinge:[3.29,2.85], closed:[1,0],  swing:[0,1],  w:0.9, color:'#C9A47C', wall:4 },
-  { name:'Porta dos arrumos (máquina e termo)', hinge:[2.13,3.57], closed:[0,-1], swing:[-1,0], w:0.69, color:'#E7E4DE', wall:6 },
+  { name:'Porta de entrada',       hinge:[0,3.52],    closed:[0,-1], swing:[1,0],  w:0.9, color:'#1E1F21', wall:1, open:0 },
+  { name:'Porta da casa de banho', hinge:[0.95,3.75], closed:[1,0],  swing:[0,1],  w:0.8, color:'oak', wall:5, open:1 },
+  { name:'Porta do quarto',        hinge:[3.29,2.85], closed:[1,0],  swing:[0,1],  w:0.9, color:'oak', wall:4, open:1 },
+  { name:'Porta dos arrumos (máquina e termo)', hinge:[2.13,3.57], closed:[0,-1], swing:[-1,0], w:0.69, color:'oak', wall:6, open:0 },
 ];
 const APT_C = [3.63, 2.78];
 
@@ -360,6 +364,22 @@ function addWindow(w, o, alongX) {
   const p = alongX ? planRect(o.a, y1, o.b, y2) : planRect(x1, o.a, x2, o.b);
   addObstacle(p, sill, o.head, 'Janela');
 }
+// light-oak veneer (as in the photo), vertical grain; the front door is black
+const oakVTex = canvasTex(256, (g, S) => {
+  const r = rng(23); g.fillStyle = '#D6B78F'; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 120; k++) { const x = r() * S, a = 0.04 + r() * 0.1; g.strokeStyle = r() > .45 ? `rgba(120,80,40,${a})` : `rgba(255,245,225,${a})`; g.lineWidth = 0.6 + r() * 2;
+    g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + (r() - .5) * 8, S * .33, x + (r() - .5) * 8, S * .66, x + (r() - .5) * 4, S); g.stroke(); }
+}, 1);
+const doorOak = new THREE.MeshStandardMaterial({ map: oakVTex, roughness: 0.62 });
+const steelMat = new THREE.MeshStandardMaterial({ color: '#C3C7CA', metalness: 0.75, roughness: 0.3 });
+function addDoorFrame(w, o, alongX) {
+  const [x1, y1, x2, y2] = w.r, t = (alongX ? y2 - y1 : x2 - x1) + 0.03, g = new THREE.Group(), fw = 0.075, hd = o.head;
+  const piece = (a, b, y0, hh) => { const len = b - a, m = new THREE.Mesh(BOX, doorOak); m.castShadow = true; m.receiveShadow = true;
+    if (alongX) { m.scale.set(len, hh, t); m.position.set((a + b) / 2, y0 + hh / 2, -(y1 + y2) / 2); }
+    else { m.scale.set(t, hh, len); m.position.set((x1 + x2) / 2, y0 + hh / 2, -(a + b) / 2); } g.add(m); };
+  piece(o.a - 0.05, o.a + fw - 0.05, 0, hd + 0.05); piece(o.b + 0.05 - fw, o.b + 0.05, 0, hd + 0.05); piece(o.a - 0.05, o.b + 0.05, hd - 0.025, 0.075);
+  wallGroup.add(g); wallDecor.push({ obj: g, w });
+}
 WALLS.forEach((w, idx) => {
   const [x1, y1, x2, y2] = w.r, alongX = (x2 - x1) >= (y2 - y1);
   const lo = alongX ? x1 : y1, hi = alongX ? x2 : y2;
@@ -368,6 +388,7 @@ WALLS.forEach((w, idx) => {
   for (const o of (w.ops || []).slice().sort((a, b) => a.a - b.a)) {
     seg(cur, o.a, 0, H); seg(o.a, o.b, 0, o.sill || 0); seg(o.a, o.b, o.head, H);
     if (o.kind === 'window') addWindow(w, o, alongX);
+    if (o.kind === 'door') addDoorFrame(w, o, alongX);
     cur = o.b;
   }
   seg(cur, hi, 0, H);
@@ -394,20 +415,59 @@ WALLS.forEach((w, idx) => {
   scene.add(rl); addObstacle(planRect(7.42, 0, 7.47, 5.55), 0, 1.04, 'Guarda da varanda');
 })();
 const doorGroup = new THREE.Group(); scene.add(doorGroup);
-for (const d of DOORS) {
+/* Doors open and close (tap/click the leaf). Each leaf hangs from a pivot at its hinge; t = 0 closed, 1 open.
+   The open/closed state is kept per browser. */
+const doorState = (() => { try { return JSON.parse(localStorage.getItem('apt-doors') || '{}') || {}; } catch (e) { return {}; } })();
+const doors = [];
+DOORS.forEach((d, di) => {
   const [hx, hy] = d.hinge, [sx, sy] = d.swing, [cx, cy2] = d.closed;
-  const leaf = bx(doorGroup, d.w, 2.05, 0.04, d.color, 0, 0, 0);
-  leaf.position.set(hx + sx * d.w / 2 + cx * 0.02, 1.025, -(hy + sy * d.w / 2 + cy2 * 0.02));
-  leaf.rotation.y = Math.atan2(sy, sx); leaf.castShadow = true;
   const a1 = Math.atan2(cy2, cx), a2 = Math.atan2(sy, sx);
   let diff = a2 - a1; while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
+  const piv = new THREE.Group(); piv.position.set(hx, 0, -hy); doorGroup.add(piv);
+  const leaf = bx(piv, d.w - 0.01, 2.05, 0.04, d.color === 'oak' ? doorOak : d.color, d.w / 2, 0, 0); leaf.castShadow = true;
+  for (const sz of [-1, 1]) { cy(piv, 0.026, 0.026, 0.01, steelMat, d.w - 0.07, 1.02, sz * 0.025, 20).rotation.x = Math.PI / 2;
+    bx(piv, 0.13, 0.018, 0.02, steelMat, d.w - 0.125, 1.01, sz * 0.042); }
+  piv.traverse(o => { if (o.isMesh) o.userData.door = di; });
+  const t = doorState[di] !== undefined ? +doorState[di] : d.open;
+  doors.push({ d, piv, a1, diff, hx, hy, t, target: t });
+  piv.rotation.y = a1 + diff * t;
   const start = diff > 0 ? a1 : a2;
   const ring = new THREE.Mesh(new THREE.RingGeometry(d.w - 0.012, d.w, 40, 1, start, Math.PI / 2), new THREE.MeshBasicMaterial({ color:'#3A3F3C', side:THREE.DoubleSide }));
   ring.rotation.x = -Math.PI / 2; ring.position.set(hx, 0.006, -hy); doorGroup.add(ring);
   const poly = [[hx, -hy]];
   for (let k = 0; k <= 8; k++) { const t = start + (k / 8) * Math.PI / 2; poly.push([hx + d.w * Math.cos(t), -(hy + d.w * Math.sin(t))]); }
   doorZones.push({ name: d.name, poly });
-  wallDecor.push({ obj: leaf, w: WALLS[d.wall] });
+  wallDecor.push({ obj: piv, w: WALLS[d.wall] });
+});
+let doorRAF = 0;
+function stepDoors() {
+  doorRAF = 0; let busy = false;
+  for (const o of doors) if (o.t !== o.target) { const st = 0.06; o.t = Math.abs(o.target - o.t) <= st ? o.target : o.t + Math.sign(o.target - o.t) * st; o.piv.rotation.y = o.a1 + o.diff * o.t; busy = true; }
+  requestRender(); if (busy) doorRAF = requestAnimationFrame(stepDoors);
+}
+function toggleDoor(di) {
+  const o = doors[di]; o.target = o.target > 0.5 ? 0 : 1; doorState[di] = o.target;
+  try { localStorage.setItem('apt-doors', JSON.stringify(doorState)); } catch (e) {}
+  if (!doorRAF) doorRAF = requestAnimationFrame(stepDoors);
+}
+function doorLeafPolys() {
+  return doors.map(o => { const th = o.a1 + o.diff * o.t, ux = Math.cos(th), uz = -Math.sin(th), nx = -uz * 0.03, nz = ux * 0.03, hx = o.hx, hz = -o.hy, L = o.d.w;
+    return [[hx + nx, hz + nz], [hx + ux * L + nx, hz + uz * L + nz], [hx + ux * L - nx, hz + uz * L - nz], [hx - nx, hz - nz]]; });
+}
+// nearest thing under the pointer: a door leaf (visible), a piece of furniture, or a wall that hides them
+function pickAny(maxD) {
+  const targets = [wallGroup, itemRoot]; for (const o of doors) if (o.piv.visible) targets.push(o.piv);
+  for (const h of ray.intersectObjects(targets, true)) {
+    if (maxD && h.distance > maxD) return { far: true };
+    let vis = true; for (let o = h.object; o; o = o.parent) if (!o.visible) { vis = false; break; }
+    if (!vis) continue;
+    const u = h.object.userData;
+    if (u.door !== undefined) return { door: u.door, h };
+    if (u.itemId) { const it = items.find(i => i.id === u.itemId); if (it) return { it, h }; }
+    if (h.object.parent && h.object.parent.parent === wallGroup) continue; // windows/curtains: look through
+    return {};
+  }
+  return {};
 }
 
 /* ============================== FURNITURE TYPES ============================== */
@@ -784,8 +844,8 @@ function defaults() {
   mk('kitchen', 'Cozinha', 0.3, 1.195, 90, { w: 2.39 });
   mk('stepStool', 'Escadote BEKVÄM (IKEA)', 0.84, 0.25, 180);
   mk('rug', 'Tapete de cozinha majólica (Leroy Merlin)', 0.905, 1.195, 90, { w: 2.3, d: 0.57, pat: 'majolica' });
-  mk('tableRound', 'Mesa de jantar', 1.95, 1.4, 0);
-  mk('chair', 'Cadeira', 1.95, 2.24, 0); mk('chair', 'Cadeira', 1.11, 1.4, 90); mk('chair', 'Cadeira', 2.79, 1.4, 270);
+  mk('tableRound', 'Mesa de jantar', 1.95, 1.4, 45);
+  mk('chair', 'Cadeira', 1.45, 0.9, 135); mk('chair', 'Cadeira', 2.45, 0.9, 225); mk('chair', 'Cadeira', 1.45, 1.9, 45);
   mk('eket', 'EKET 70 (máquina de café)', 1.95, 0.195, 180, { w: 0.7, d: 0.35, h: 0.7, mods: [0.7], coffee: 1 });
   mk('shoeCab', 'Sapateira DRESDE (Conforama)', 0.295, 2.476, 180);
   mk('standDesk', 'Secretária VEVOR', 3.2, 0.26, 180);
@@ -806,7 +866,7 @@ function defaults() {
   return L;
 }
 const KEY = 'apartamento-t1-layout-v3';
-const LAYOUT_V = 16;
+const LAYOUT_V = 17;
 let items = null, storedV = 0;
 try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && Array.isArray(s.items) && s.items.every(i => TYPES[i.type])) { items = s.items; storedV = s.v || 0; } } catch (e) {}
 if (!items) { items = defaults(); storedV = LAYOUT_V; }
@@ -867,6 +927,7 @@ function hitsFor(it, polys) {
   if (yr[0] < 2.0) for (const d of doorZones) if (polys.some(p => overlap(p, d.poly))) out.push({ t: 'door', label: d.name });
   for (const o of items) {
     if (o === it || o.stored || TYPES[o.type].flat) continue;
+    if ((it.type === 'chair' && /^table/.test(o.type)) || (o.type === 'chair' && /^table/.test(it.type))) continue; // chairs tuck under tables
     const r = yRange(o); if (!(yr[0] < r[1] - 1e-3 && yr[1] > r[0] + 1e-3)) continue;
     const op = worldPolys(o); if (polys.some(p => op.some(q => overlap(p, q)))) out.push({ t: 'item', label: o.name, id: o.id });
   }
@@ -898,7 +959,7 @@ function clearances(it) {
 const diningChairs = t => items.filter(i => i.type === 'chair' && !i.stored && !/secret/i.test(i.name) && Math.hypot(i.x - t.x, i.z - t.z) < 1.6);
 function arrangeChairs(t) {
   const chairs = diningChairs(t); if (!chairs.length) return 0;
-  const R = t.w / 2 + 0.29, a = t.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), all = items;
+  const R = t.w / 2 + 0.16, a = t.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), all = items;
   items = items.filter(i => !chairs.includes(i));
   const cands = [0, 1, 2, 3].map(k => {
     const th = k * Math.PI / 2, lx = R * Math.cos(th), lz = R * Math.sin(th);
@@ -1005,8 +1066,9 @@ function endPointer(e) {
   }
   else if (e.type === 'pointerup' && downAt && !measureOn && e.target === canvas) {
     const d = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
-    if (touch) { if (d < TAP_PX && Date.now() - downAt.t < 600) { setRay(e); const it = pickItem(); select(it ? it.id : null); if (it && !it.locked) flash('Selecionado. Mantém o dedo sobre a peça para a arrastar.'); } }
-    else if (d < 5) { setRay(e); if (!pickItem()) select(null); }
+    if (touch) { if (d < TAP_PX && Date.now() - downAt.t < 600) { setRay(e); const hit = pickAny(); if (hit.door !== undefined) { toggleDoor(hit.door); return; }
+      const it = pickItem(); select(it ? it.id : null); if (it && !it.locked) flash('Selecionado. Mantém o dedo sobre a peça para a arrastar.'); } }
+    else if (d < 5) { setRay(e); const hit = pickAny(); if (hit.door !== undefined) toggleDoor(hit.door); else if (!pickItem()) select(null); }
   }
   if (measureOn) ctl.enabled = true;
   downAt = null;
@@ -1057,9 +1119,52 @@ function walkBlocked(x, z) {
     if (Math.hypot(it.x - x, it.z - z) > 3.5) continue;
     if (worldPolys(it).some(q => overlap(P, q, 0.001))) return true;
   }
+  for (const q of doorLeafPolys()) if (overlap(P, q, 0.001)) return true;
   return false;
 }
-function placeWalkCam() { walkCam.position.set(W.x, EYE, W.z); walkCam.rotation.set(W.pitch, W.yaw, 0); }
+function placeWalkCam() { const p = W.pose; walkCam.position.set(p ? p.x : W.x, p ? p.y : EYE, p ? p.z : W.z); walkCam.rotation.set(W.pitch, W.yaw, 0); }
+const SEATS = new Set(['sofa', 'sofa2', 'sofaL', 'armchair', 'chair', 'officeChair']), BEDS = new Set(['bed', 'bedS']);
+const clampv = (v, a, b) => Math.max(a, Math.min(b, v));
+// pose for sitting/lying on a piece, from the tapped point; local +z is the piece's front
+function poseFor(it, pt, act) {
+  const a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), dx = pt.x - it.x, dz = pt.z - it.z;
+  const lx = c * dx - s * dz, lz = s * dx + c * dz, { w, d } = it;
+  let px = 0, pz = 0, y = 1.15, dir = [0, 1], pitch = -0.12;
+  if (it.type === 'sofaL') {
+    const z0 = -it.cd / 2, side = it.side || 1, chx = side * (w / 2 - it.cw / 2), seat = it.seat || 0.42;
+    if (act === 'lie') { px = chx; pz = z0 + 0.42; y = seat + 0.32; pitch = 0.42; }
+    else { px = clampv(lx, -w / 2 + 0.4, w / 2 - 0.4); pz = z0 + 0.4; y = seat + 0.74; }
+  } else if (BEDS.has(it.type)) {
+    if (act === 'lie') { px = clampv(lx, -w / 2 + 0.32, w / 2 - 0.32); pz = -d / 2 + 0.36; y = 0.74; pitch = 0.5; }
+    else { px = clampv(lx, -w / 2 + 0.3, w / 2 - 0.3); pz = d / 2 - 0.22; y = 1.22; }
+  } else if (/^sofa|armchair/.test(it.type)) {
+    if (act === 'lie') { px = -w / 2 + 0.42; pz = 0.06; y = 0.72; dir = [1, 0]; pitch = 0.4; }
+    else { px = it.type === 'armchair' ? 0 : clampv(lx, -w / 2 + 0.35, w / 2 - 0.35); pz = -d / 2 + 0.36; y = 1.16; }
+  } else { px = 0; pz = -0.02; y = 1.2; }
+  const fx = c * dir[0] + s * dir[1], fz = -s * dir[0] + c * dir[1];
+  return { x: it.x + c * px + s * pz, z: it.z - s * px + c * pz, y, yaw: Math.atan2(-fx, -fz), pitch };
+}
+function takePose(it, pt, act) {
+  const p = poseFor(it, pt, act); W.pose = { x: p.x, y: p.y, z: p.z }; W.yaw = p.yaw; W.pitch = p.pitch;
+  $('#b-stand').hidden = false; hideWMenu(); placeWalkCam(); requestRender();
+  flash(act === 'lie' ? `Deitado: ${it.name}. Arrasta para olhar; anda ou “Levantar” para sair.` : `Sentado: ${it.name}. Arrasta para olhar; anda ou “Levantar” para sair.`);
+}
+function standUp() { if (!W.pose) return; W.pose = null; W.pitch = -0.08; $('#b-stand').hidden = true; placeWalkCam(); requestRender(); }
+function hideWMenu() { $('#wmenu').hidden = true; }
+function walkTap(e) {
+  setRay(e); const hit = pickAny(3.2);
+  if (hit.far) { flash('Está longe: aproxima-te para usar.'); return; }
+  if (hit.door !== undefined) { toggleDoor(hit.door); return; }
+  const it = hit.it; if (!it) { hideWMenu(); return; }
+  const pt = hit.h.point.clone();
+  if (it.type === 'chair' || it.type === 'officeChair') { takePose(it, pt, 'sit'); return; }
+  if (!SEATS.has(it.type) && !BEDS.has(it.type)) { flash(it.name); return; }
+  const m = $('#wmenu'); m.querySelector('b').textContent = it.name;
+  const box = m.querySelector('div'); box.innerHTML = '<button class="btn primary" data-a="sit">Sentar</button><button class="btn primary" data-a="lie">Deitar</button><button class="btn" data-a="x">Cancelar</button>';
+  box.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.a === 'x') hideWMenu(); else takePose(it, pt, b.dataset.a); });
+  m.hidden = false;
+}
+$('#b-stand').onclick = standUp;
 function walkTick(t) {
   W.raf = 0; const dt = W.t ? Math.min(0.05, (t - W.t) / 1000) : 0.016; W.t = t;
   const k = W.keys; let f = 0, s = 0;
@@ -1067,6 +1172,7 @@ function walkTick(t) {
   if (k.has('d')) s += 1; if (k.has('a')) s -= 1;
   W.yaw += ((k.has('arrowleft') ? 1 : 0) - (k.has('arrowright') ? 1 : 0)) * 1.9 * dt;
   if (W.joy) { f -= W.joy.dy; s += W.joy.dx; }
+  if ((f || s) && W.pose) standUp();
   const len = Math.hypot(f, s); if (len > 1) { f /= len; s /= len; }
   if (f || s) {
     const sp = (k.has('shift') ? 2.6 : 1.4) * dt, sy = Math.sin(W.yaw), cyw = Math.cos(W.yaw);
@@ -1081,7 +1187,7 @@ function kickWalk() { if (!W.raf) { W.t = 0; W.raf = requestAnimationFrame(walkT
 const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
 canvas.addEventListener('pointerdown', e => {
   if (view !== 'walk' || W.look) return;
-  W.look = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  W.look = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: Date.now() }; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
 });
 canvas.addEventListener('pointermove', e => {
   if (view !== 'walk' || !W.look || e.pointerId !== W.look.id) return;
@@ -1089,7 +1195,11 @@ canvas.addEventListener('pointermove', e => {
   W.yaw -= (e.clientX - W.look.x) * sens; W.pitch = Math.max(-1.25, Math.min(1.25, W.pitch - (e.clientY - W.look.y) * sens));
   W.look.x = e.clientX; W.look.y = e.clientY; placeWalkCam(); requestRender();
 });
-for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { if (W.look && e.pointerId === W.look.id) W.look = null; });
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => {
+  if (!W.look || e.pointerId !== W.look.id) return;
+  const L = W.look; W.look = null;
+  if (ev === 'pointerup' && view === 'walk' && Math.hypot(e.clientX - L.x0, e.clientY - L.y0) < 8 && Date.now() - L.t0 < 450) walkTap(e);
+});
 (() => {
   const joy = $('#joy'), knob = joy.querySelector('i'), R = 46; let id = null;
   const upd = e => { const r = joy.getBoundingClientRect(); let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
@@ -1532,8 +1642,8 @@ const hintEl = $('#hint');
 let flashT = 0;
 function setHint() {
   if (Date.now() < flashT) return;
-  hintEl.textContent = view === 'walk' ? (coarse ? 'Joystick em baixo à esquerda para andar; arrasta no resto do ecrã para olhar à volta.'
-      : 'W A S D ou setas para andar (Shift corre); arrasta o rato para olhar à volta. Esc volta ao 3D.')
+  hintEl.textContent = view === 'walk' ? (coarse ? 'Joystick para andar, arrasta para olhar. Toca numa porta para a abrir; no sofá, cama ou cadeira para te sentares ou deitares.'
+      : 'W A S D ou setas para andar (Shift corre), arrasta para olhar. Clica numa porta para a abrir; no sofá, cama ou cadeira para te sentares ou deitares.')
     : measureOn ? 'Clica em dois pontos do chão para medir. Esc ou “Medir” para sair.'
     : coarse ? (view === 'plan' ? 'Um dedo desloca, dois fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.'
       : 'Um dedo roda, dois deslocam e fazem zoom. Toca num móvel para o escolher; depois mantém o dedo nele para o arrastar.')
@@ -1547,7 +1657,7 @@ function setView(v) {
   view = v; for (const [id, k] of [['#v-plan', 'plan'], ['#v-3d', '3d'], ['#v-walk', 'walk']]) $(id).setAttribute('aria-pressed', String(v === k));
   ctl3.enabled = false; ctlP.enabled = false;
   if (v === 'walk') { ctl = ctl3; cam = walkCam; W.keys.clear(); W.look = null; placeWalkCam(); }
-  else { ctl = v === 'plan' ? ctlP : ctl3; ctl.enabled = true; cam = v === 'plan' ? ortho : persp; W.joy = null; }
+  else { ctl = v === 'plan' ? ctlP : ctl3; ctl.enabled = true; cam = v === 'plan' ? ortho : persp; W.joy = null; W.pose = null; $('#b-stand').hidden = true; hideWMenu(); }
   ceiling.visible = v === 'walk';
   stage.classList.toggle('walking', v === 'walk');
   $('#wallseg').querySelectorAll('button').forEach(b => b.disabled = v !== '3d');
@@ -1561,7 +1671,7 @@ function setMeasure(on) { measureOn = on; $('#b-measure').setAttribute('aria-pre
 $('#b-measure').onclick = () => setMeasure(!measureOn);
 $('#b-snap').onclick = () => { snapOn = !snapOn; $('#b-snap').setAttribute('aria-pressed', String(snapOn)); };
 $('#b-undo').onclick = undo; $('#b-redo').onclick = redo;
-$('#b-recenter').onclick = () => { if (view === 'walk') { Object.assign(W, WALK0); placeWalkCam(); } else resetCams(); requestRender(); };
+$('#b-recenter').onclick = () => { if (view === 'walk') { Object.assign(W, WALK0); W.pose = null; $('#b-stand').hidden = true; hideWMenu(); placeWalkCam(); } else resetCams(); requestRender(); };
 let nudgeT = 0;
 window.addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input,textarea,select')) return;
@@ -1704,6 +1814,13 @@ if (storedV < 16) {
     items.push(newKlea);
   }
 }
+// v17: dining table turned 45° so its cross base sits square to the walls and the chairs go in the diagonal gaps, tucked in
+let tucked = null;
+if (storedV < 17) {
+  if (!beforeV6) beforeV6 = JSON.stringify(items.map(strip));
+  tucked = items.find(i => i.type === 'tableRound');
+  if (tucked) { tucked.rot = 45; arrangeChairs(tucked); }
+}
 if (storedV < LAYOUT_V) save();
 last = JSON.stringify(items.map(strip));
 if (beforeV6 && beforeV6 !== last) hist.push(beforeV6);
@@ -1715,7 +1832,8 @@ setHint(); renderPanel(); updUndo(); renderSync(); connectShared();
 { const tree = items.find(i => i.type === 'xmasTree');
   const side = items.find(i => i.type === 'eket' && i.w < 0.4), coffee = items.find(i => i.type === 'eket' && /caf/i.test(i.name));
   const tvb = items.find(i => i.type === 'eket' && i.tv && i.lying);
-  if (newKlea && hist.length) { computeIssues(); select(newKlea.id); flash('Móvel TV Kléa com a televisão; os EKET deitados ficaram guardados (Planta → Guardados). Experimenta “Passear”.'); }
+  if (tucked && storedV >= 16 && hist.length) { computeIssues(); select(tucked.id); flash('Mesa rodada 45° e cadeiras metidas por baixo, nas diagonais. “Desfazer” volta atrás.'); }
+  else if (newKlea && hist.length) { computeIssues(); select(newKlea.id); flash('Móvel TV Kléa com a televisão; os EKET deitados ficaram guardados (Planta → Guardados). Experimenta “Passear”.'); }
   else if (newWasher && storedV >= 14 && hist.length) { computeIssues(); select(newWasher.id); flash('Arrumos com paredes próprias: parede atrás da porta do quarto, máquina de lavar e termoacumulador lá dentro.'); }
   else if (newRug && storedV >= 13 && hist.length) { computeIssues(); select(newRug.id); flash('Tapete de majólica 57 × 230 cm na cozinha e espelho da casa de banho com Ø80. “Desfazer” volta à disposição anterior.'); }
   else if (movedTree && storedV >= 12 && hist.length) { computeIssues(); select(movedTree.id); flash('Árvore afastada do cortinado e aparador 5 cm mais para a porta, sem sobreposições. “Desfazer” volta à disposição anterior.'); }
